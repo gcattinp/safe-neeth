@@ -18,23 +18,23 @@ if (!PRIVATE_KEY) {
     PRIVATE_KEY = generatePrivateKey();
 }
 
-const pimlicoEndpoint = `https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`;
+const pimlicoEndpoint = `https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`;
 
 export const publicClient = createPublicClient({
 	transport: http("https://rpc.ankr.com/arbitrum/"),
 })
- 
+
 export const paymasterClient = createPimlicoPaymasterClient({
-	transport: http(`https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`),
-	entryPoint: ENTRYPOINT_ADDRESS_V07,
-})
- 
-export const pimlicoBundlerClient = createPimlicoBundlerClient({
-	transport: http(`https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`),
+	transport: http(`https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`),
 	entryPoint: ENTRYPOINT_ADDRESS_V07,
 })
 
-const signer = privateKeyToAccount(PRIVATE_KEY); 
+export const pimlicoBundlerClient = createPimlicoBundlerClient({
+	transport: http(`https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`),
+	entryPoint: ENTRYPOINT_ADDRESS_V07,
+})
+
+const signer = privateKeyToAccount(PRIVATE_KEY);
 
 console.log('Signer:', signer.address)
 
@@ -85,7 +85,7 @@ const smartAccountClient = createSmartAccountClient({
 
             console.log('Required Prefund:', requiredPrefund)
 
-            // check neeth balance 
+            // check neeth balance
             const neethBalance = await publicClient.readContract({
                 address: NEETH_ADDRESS,
                 abi: erc20Abi,
@@ -101,10 +101,10 @@ const smartAccountClient = createSmartAccountClient({
 				})
 
                 console.log('Gas Estimates: (NEETH)', gasEstimates)
- 
+
 				return {
 					...gasEstimates,
-					paymaster: NEETH_ADDRESS, 
+					paymaster: NEETH_ADDRESS,
 				}
 			} else {
                 const gasEstimates = await pimlicoBundlerClient.estimateUserOperationGas({
