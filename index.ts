@@ -4,10 +4,11 @@ import {
 	createPimlicoBundlerClient,
 	createPimlicoPaymasterClient,
 } from "permissionless/clients/pimlico"
-import { createPublicClient, http, parseEther, type Hex, erc20Abi, type Address, createWalletClient, stringToHex, encodeFunctionData } from "viem"
+import { createPublicClient, http, parseEther, getContract, type Hex, erc20Abi, type Address, createWalletClient, stringToHex, encodeFunctionData } from "viem"
 import { arbitrum } from "viem/chains"
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts"
 import { neethAbi } from "./neethAbi"
+import protocolKit from "@safe-global/protocol-kit"
 
 const NEETH_ADDRESS = "0x00000000000009B4AB3f1bC2b029bd7513Fbd8ED" as const;
 const API_KEY = process.env.PIMLICO_API_KEY;
@@ -18,19 +19,19 @@ if (!PRIVATE_KEY) {
     PRIVATE_KEY = generatePrivateKey();
 }
 
-const pimlicoEndpoint = `https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`;
+const pimlicoEndpoint = `https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`;
 
 export const publicClient = createPublicClient({
 	transport: http("https://rpc.ankr.com/arbitrum/"),
 })
 
 export const paymasterClient = createPimlicoPaymasterClient({
-	transport: http(`https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`),
+	transport: http(`https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`),
 	entryPoint: ENTRYPOINT_ADDRESS_V07,
 })
 
 export const pimlicoBundlerClient = createPimlicoBundlerClient({
-	transport: http(`https://api.pimlico.io/v2/42161/arbitrum/rpc?apikey=${API_KEY}`),
+	transport: http(`https://api.pimlico.io/v2/arbitrum/rpc?apikey=${API_KEY}`),
 	entryPoint: ENTRYPOINT_ADDRESS_V07,
 })
 
@@ -44,19 +45,65 @@ const walletClient = createWalletClient({
     chain: arbitrum,
 })
 
+const NEETHContract = getContract ({
+  address: NEETH_ADDRESS,
+  abi: neethAbi,
+  client: {
+    public: publicClient,
+    wallet: walletClient,
+  }
+})
+
+const getNEETHBalanceEOA = await NEETHContract.read.balanceOf([signer.address])
+
+console.log('NEETH Balance EOA:', getNEETHBalanceEOA)
+
+const depositNEETH = await NEETHContract.write.deposit(
+    {
+        to: NEETH_ADDRESS,
+        value: parseEther("0.0001"),
+    }
+)
+console.log('Deposit Tx:', depositNEETH)
+
+const waitDepositNEETH = await publicClient.waitForTransactionReceipt(
+  {
+    hash: depositNEETH,
+    retryDelay: 10_000
+  }
+)
+
+console.log('Transaction Wait:', waitDepositNEETH)
+
+const newEOABalance = await NEETHContract.read.balanceOf([signer.address])
+console.log('New EOA Balance:', newEOABalance)
+
+const SendNEETHToSCA = newEOABalance - getNEETHBalanceEOA;
+console.log('Send NEETH to SCA:', SendNEETHToSCA)
+
+
+
 const safeAccount = await signerToSafeSmartAccount(publicClient, {
 	entryPoint: ENTRYPOINT_ADDRESS_V07,
 	signer: signer,
 	saltNonce: 0n, // optional
 	safeVersion: "1.4.1",
-	// address: "0x...", // optional, only if you are using an already created account
+	// address:, // optional, only if you are using an already created account
 })
 
 console.log('Safe Account:', safeAccount.address)
 
+// const noncePreSAFE = await publicClient.getTransactionCount({
+//   address: signer.address, // Use the address of your signer
+//   blockTag: 'latest'
+// });
+
+// console.log('Current Nonce:', noncePreSAFE)
+
 const depositTx = await walletClient.sendTransaction({
     to: safeAccount.address,
-    value: parseEther("0.00001"), // amount to deposit
+    value: parseEther("0.000001"),
+    // nonce: noncePreSAFE,// amount to deposit
     data: encodeFunctionData({
         abi: neethAbi,
         functionName: 'depositTo',
@@ -64,7 +111,25 @@ const depositTx = await walletClient.sendTransaction({
     })
 })
 
-console.log('Deposit Tx:', depositTx)
+
+
+// const waitSAFECreate = await publicClient.waitForTransactionReceipt(
+//   {
+//     hash: depositTx,
+//     retryDelay: 10_000
+//   }
+// )
+
+// console.log('Transaction Wait:', waitSAFECreate)
+
+
+const nonceTransferNEETH = await publicClient.getTransactionCount({
+  address: signer.address, // Use the address of your signer
+  blockTag: 'latest'
+});
+
+console.log('Current Nonce:', nonceTransferNEETH)
+
 
 const smartAccountClient = createSmartAccountClient({
 	account: safeAccount,
@@ -122,10 +187,17 @@ const smartAccountClient = createSmartAccountClient({
 	},
 })
 
+const transferNEETHToSafe = await NEETHContract.write.transfer([
+  safeAccount.address,
+  SendNEETHToSCA,
+], {nonce: nonceTransferNEETH})
+
+console.log('Transfer NEETH to Safe:', transferNEETHToSafe)
+
 const txHash = await smartAccountClient.sendTransaction({
-	to: "0xcaaa5473929bdd3321cf47cdc971bcbb91cf0313",
-	value: 0n,
-    data: stringToHex("NEETH is SAFE"),
+	to: "0x6fC578021Ca4F7166D37FE5E8eeD176c309fdC91",
+	value: 1n,
+  data: stringToHex("NEETH is SAFE")
 })
 
 console.log('Tx Hash:', txHash)
